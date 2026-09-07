@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gauss-Seidel Multi-Matrix Calculator</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 20px auto; padding: 0 15px; background-color: #f9f9f9; color: #333; }
+        .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        textarea { w_idth: 100%; height: 100px; font-family: monospace; font-size: 14px; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 20px; font-size: 15px; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        .error { color: #dc3545; background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 4px; display: none; margin-top: 15px; font-weight: bold; }
+        .success { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 4px; display: none; margin-top: 15px; }
+        pre { background: #eee; padding: 15px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+    <h2>Gauss-Seidel System Solver</h2>
+    <div class="card">
+        <h3>Input System Parameters</h3>
+        <p>Enter the augmented matrix coefficients $[A | B]$ line-by-line. Spaces split columns, new lines split equations.</p>
+        <p><strong>Example (for 3x3 system):</strong><br><code>4 1 2 9<br>1 3 1 7<br>1 2 5 12</code></p>
+        <textarea id="matrixInput" placeholder="4 1 2 9&#10;1 3 1 7&#10;1 2 5 12"></textarea>
+        
+        <div style="margin-top:15px; display: flex; gap: 15px;">
+            <label>Tolerance: <input type="number" id="tolerance" value="0.0001" step="0.00001" style="width:80px;"></label>
+            <label>Max Iterations: <input type="number" id="maxIter" value="100" style="width:60px;"></label>
+        </div>
+        <br>
+        <button onclick="solveGaussSeidel()">Calculate Roots</button>
+    </div>
+
+    <div id="errorBox" class="error"></div>
+    <div id="resultBox" class="success">
+        <h3>Solution Summary</h3>
+        <div id="outputContent"></div>
+    </div>
+
+    <script>
+        function solveGaussSeidel() {
+            const input = document.getElementById('matrixInput').value.trim();
+            const tol = parseFloat(document.getElementById('tolerance').value);
+            const maxIter = parseInt(document.getElementById('maxIter').value);
+            const errorBox = document.getElementById('errorBox');
+            const resultBox = document.getElementById('resultBox');
+            const outputContent = document.getElementById('outputContent');
+
+            errorBox.style.display = 'none';
+            resultBox.style.display = 'none';
+
+            if (!input) { showError("Error: Input matrix cannot be blank."); return; }
+
+            // Parse text grid into nested values
+            let rows = input.split('\n').map(r => r.trim().split(/\s+/).map(Number));
+            let n = rows.length;
+
+            // Validation: Confirm uniform matrix grids
+            for(let i=0; i<n; i++) {
+                if(rows[i].length !== n + 1) {
+                    showError(`Error: Row ${i+1} has invalid dimensions (${rows[i].length} columns found). For ${n} equations, expected ${n+1} columns.`);
+                    return;
+                }
+                if(rows[i].some(isNaN)) {
+                    showError(`Error: Row ${i+1} contains non-numeric character elements.`);
+                    return;
+                }
+            }
+
+            // Extract values into matrix framework A and vector B
+            let A = [];
+            let B = [];
+            for(let i=0; i<n; i++) {
+                A.push(rows[i].slice(0, n));
+                B.push(rows[i][n]);
+                if(A[i][i] === 0) {
+                    showError(`Error: Zero found on primary diagonal element A[${i+1}][${i+1}]. Gauss-Seidel division cannot continue.`);
+                    return;
+                }
+            }
+
+            // Gauss-Seidel Calculation loop
+            let X = new Array(n).fill(0);
+            let iterations = 0;
+            let converged = false;
+
+            while(iterations < maxIter) {
+                let xOld = [...X];
+                for(let i=0; i<n; i++) {
+                    let sum = 0;
+                    for(let j=0; j<n; j++) {
+                        if(j !== i) sum += A[i][j] * X[j];
+                    }
+                    X[i] = (B[i] - sum) / A[i][i];
+                }
+
+                // Check convergence status
+                let maxDiff = 0;
+                for(let i=0; i<n; i++) {
+                    maxDiff = Math.max(maxDiff, Math.abs(X[i] - xOld[i]));
+                }
+
+                iterations++;
+                if(maxDiff < tol) { converged = true; break; }
+                
+                // Catch exploding systems early to signify infinite loop / non-convergence
+                if(maxDiff > 1e10) {
+                    showError(`Infinite Iteration Warning: Matrix diverges dynamically. Values are compounding endlessly. Ensure your matrix setup stays strictly diagonally dominant.`);
+                    return;
+                }
+            }
+
+            if(!converged) {
+                showError(`Execution Cap Met: System did not converge within ${maxIter} rounds. Infinite looping prevented.`);
+                return;
+            }
+
+            // Present results dynamically
+            let htmlResult = `<p><strong>Converged successfully in ${iterations} execution cycles.</strong></p><ul>`;
+            for(let i=0; i<n; i++) {
+                htmlResult += `<li><strong>X<sub>${i+1}</sub></strong> = ${X[i].toFixed(5)}</li>`;
+            }
+            htmlResult += "</ul>";
+            outputContent.innerHTML = htmlResult;
+            resultBox.style.display = 'block';
+        }
+
+        function showError(msg) {
+            const errorBox = document.getElementById('errorBox');
+            errorBox.innerText = msg;
+            errorBox.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
